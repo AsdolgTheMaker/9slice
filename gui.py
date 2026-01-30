@@ -43,6 +43,7 @@ class App(tk.Tk):
         self.title("9-Slice Texture Editor")
         self.configure(bg="#333")
         self.minsize(960, 600)
+        self.state("zoomed")
 
         # State -----------------------------------------------------------
         self._img: Optional[Image.Image] = None
@@ -62,63 +63,98 @@ class App(tk.Tk):
     # UI construction
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
-        # Top area: source canvas (left) + preview (right)
-        top = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        top.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
-
-        # Source canvas
-        self._canvas = tk.Canvas(top, bg=CANVAS_BG, highlightthickness=0)
-        top.add(self._canvas, weight=3)
-
-        # Right side: preview + resolution label
-        right_frame = ttk.Frame(top)
-        top.add(right_frame, weight=2)
-
-        top_bar = ttk.Frame(right_frame)
-        top_bar.pack(side=tk.TOP, fill=tk.X, pady=(4, 2))
-
-        self._res_var = tk.StringVar(value="")
-        ttk.Label(top_bar, textvariable=self._res_var,
-                  font=("TkDefaultFont", 10, "bold")).pack(side=tk.LEFT, padx=4)
-
-        self._show_guides = tk.BooleanVar(value=True)
-        ttk.Checkbutton(top_bar, text="Show guides",
-                        variable=self._show_guides,
-                        command=self._redraw_preview).pack(side=tk.RIGHT, padx=4)
-
-        self._preview = tk.Canvas(right_frame, bg=PREVIEW_BG, highlightthickness=0)
-        self._preview.pack(fill=tk.BOTH, expand=True)
-
-        # Bottom bar
-        bot = ttk.Frame(self)
-        bot.pack(fill=tk.X, padx=4, pady=(0, 4))
+        # Top toolbar
+        toolbar = ttk.Frame(self)
+        toolbar.pack(fill=tk.X, padx=4, pady=(4, 0))
 
         # Load button
-        ttk.Button(bot, text="Load Image…", command=self._load_image).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Load Image…", command=self._load_image).pack(side=tk.LEFT, padx=2)
 
-        ttk.Separator(bot, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
 
         # Margin entries
         self._margin_vars: dict[str, tk.StringVar] = {}
         for label in ("Left", "Top", "Right", "Bottom"):
-            ttk.Label(bot, text=f"{label}:").pack(side=tk.LEFT, padx=(4, 0))
+            ttk.Label(toolbar, text=f"{label}:").pack(side=tk.LEFT, padx=(4, 0))
             var = tk.StringVar(value="0")
             var.trace_add("write", self._on_entry_change)
             self._margin_vars[label.lower()] = var
-            e = ttk.Entry(bot, textvariable=var, width=5, justify=tk.CENTER)
+            e = ttk.Entry(toolbar, textvariable=var, width=5, justify=tk.CENTER)
             e.pack(side=tk.LEFT, padx=2)
 
-        ttk.Separator(bot, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        # Main area: source canvas (left) + preview (right)
+        main = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        main.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        # Export buttons
-        ttk.Button(bot, text="Export Corners", command=self._export_corners).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bot, text="Export JSON", command=self._export_json).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bot, text="Export 9 PNGs", command=self._export_pngs).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bot, text="Export Atlas", command=self._export_atlas).pack(side=tk.LEFT, padx=2)
+        # Source canvas
+        self._canvas = tk.Canvas(main, bg=CANVAS_BG, highlightthickness=0)
+        main.add(self._canvas, weight=3)
 
-        # Status label
+        # Right side: preview controls + preview canvas
+        right_frame = ttk.Frame(main)
+        main.add(right_frame, weight=2)
+
+        preview_bar = ttk.Frame(right_frame)
+        preview_bar.pack(side=tk.TOP, fill=tk.X, pady=(4, 2))
+
+        self._preview_mode = tk.StringVar(value="Stitched Corners")
+        for mode in ("Stitched Corners", "9-Slice", "JSON"):
+            ttk.Radiobutton(preview_bar, text=mode, variable=self._preview_mode,
+                            value=mode, command=self._on_mode_change).pack(side=tk.LEFT, padx=4)
+
+        self._show_guides = tk.BooleanVar(value=True)
+        ttk.Checkbutton(preview_bar, text="Guides",
+                        variable=self._show_guides,
+                        command=self._redraw_preview).pack(side=tk.RIGHT, padx=4)
+
+        self._res_var = tk.StringVar(value="")
+        ttk.Label(preview_bar, textvariable=self._res_var,
+                  font=("TkDefaultFont", 10, "bold")).pack(side=tk.RIGHT, padx=8)
+
+        # Export button row
+        export_bar = ttk.Frame(right_frame)
+        export_bar.pack(side=tk.TOP, fill=tk.X, pady=(2, 4))
+
+        self._export_btn = ttk.Button(export_bar, text="Export Stitched Corners", command=self._export_current)
+        self._export_btn.pack(side=tk.LEFT, padx=2)
+
+        # Preview canvas (for image modes)
+        self._preview = tk.Canvas(right_frame, bg=PREVIEW_BG, highlightthickness=0)
+
+        # JSON text widget (for JSON mode) with scrollbar
+        self._json_frame = ttk.Frame(right_frame)
+        self._json_text = tk.Text(self._json_frame, bg=PREVIEW_BG, fg="#cccccc",
+                                  font=("Consolas", 11), wrap=tk.NONE,
+                                  insertbackground="#cccccc", borderwidth=0,
+                                  highlightthickness=0, padx=12, pady=8,
+                                  state=tk.DISABLED)
+        json_scroll_y = ttk.Scrollbar(self._json_frame, orient=tk.VERTICAL,
+                                      command=self._json_text.yview)
+        json_scroll_x = ttk.Scrollbar(self._json_frame, orient=tk.HORIZONTAL,
+                                      command=self._json_text.xview)
+        self._json_text.configure(yscrollcommand=json_scroll_y.set,
+                                  xscrollcommand=json_scroll_x.set)
+        json_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        json_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self._json_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # JSON syntax color tags
+        self._json_text.tag_configure("key", foreground="#9cdcfe")
+        self._json_text.tag_configure("string", foreground="#ce9178")
+        self._json_text.tag_configure("number", foreground="#b5cea8")
+        self._json_text.tag_configure("brace", foreground="#d4d4d4")
+        self._json_text.tag_configure("colon", foreground="#d4d4d4")
+        self._json_text.tag_configure("comma", foreground="#d4d4d4")
+
+        # Show canvas by default
+        self._preview.pack(fill=tk.BOTH, expand=True)
+
+        # Status bar at bottom
+        status_bar = ttk.Frame(self)
+        status_bar.pack(fill=tk.X, padx=4, pady=(0, 4))
+
         self._status_var = tk.StringVar(value="Load an image to begin.")
-        ttk.Label(bot, textvariable=self._status_var).pack(side=tk.RIGHT, padx=4)
+        ttk.Label(status_bar, textvariable=self._status_var).pack(side=tk.LEFT, padx=4)
 
         # Canvas events
         self._canvas.bind("<Configure>", lambda _: self._redraw())
@@ -257,66 +293,205 @@ class App(tk.Tk):
     def _redraw_preview(self) -> None:
         pv = self._preview
         pv.delete("all")
-        self._pv_img = None  # prevent GC
+        self._pv_img = None
+        self._pv_imgs: list[ImageTk.PhotoImage] = []
         if self._img is None:
             self._res_var.set("")
             return
 
-        stitched = slicer.stitch_corners(self._img, self._margins)
-        sw, sh = stitched.size
-        self._res_var.set(f"Result: {sw} x {sh} px")
+        mode = self._preview_mode.get()
+        if mode == "Stitched Corners":
+            self._preview_corners()
+        elif mode == "9-Slice":
+            self._preview_9slice()
+        elif mode == "JSON":
+            self._preview_json()
 
+    # -- helper: fit an image onto the preview canvas and return placement info
+    def _fit_to_preview(self, img: Image.Image) -> Optional[Tuple[ImageTk.PhotoImage, int, int, int, int, float]]:
+        """Scale *img* to fit the preview canvas. Returns (tk_img, cx, cy, dw, dh, scale) or None."""
+        sw, sh = img.size
         if sw == 0 or sh == 0:
-            return
-
+            return None
+        pv = self._preview
         pw = pv.winfo_width() or 300
         ph = pv.winfo_height() or 300
         pad = 16
         scale = min((pw - pad) / sw, (ph - pad) / sh, 4.0)
         if scale <= 0:
             scale = 1
+        dw = max(1, int(sw * scale))
+        dh = max(1, int(sh * scale))
+        resized = img.resize((dw, dh), Image.NEAREST if scale >= 2 else Image.LANCZOS)
+        tki = ImageTk.PhotoImage(resized)
+        cx = pw // 2
+        cy = ph // 2
+        return tki, cx, cy, dw, dh, scale
 
-        display_w = max(1, int(sw * scale))
-        display_h = max(1, int(sh * scale))
-        resized = stitched.resize((display_w, display_h),
-                                  Image.NEAREST if scale >= 2 else Image.LANCZOS)
-        self._pv_img = ImageTk.PhotoImage(resized)
-        x = pw // 2
-        y = ph // 2
-        pv.create_image(x, y, anchor=tk.CENTER, image=self._pv_img)
-        # Draw a divider cross and margin percentages
+    def _draw_margin_labels(self, ox: float, oy: float, dw: int, dh: int) -> None:
+        """Draw margin ratio labels outside the preview image edges."""
+        pv = self._preview
+        m = self._margins
+        iw, ih = self._img.width, self._img.height
+        rl = m.left / iw if iw else 0
+        rr = m.right / iw if iw else 0
+        rt = m.top / ih if ih else 0
+        rb = m.bottom / ih if ih else 0
+        label_cfg = dict(fill="#cccccc", font=("TkDefaultFont", 9))
+        pad_px = 4
+        pv.create_text(ox - pad_px, oy + dh // 2,
+                       anchor=tk.E, text=f"{rl:.2f}", **label_cfg)
+        pv.create_text(ox + dw + pad_px, oy + dh // 2,
+                       anchor=tk.W, text=f"{rr:.2f}", **label_cfg)
+        pv.create_text(ox + dw // 2, oy - pad_px,
+                       anchor=tk.S, text=f"{rt:.2f}", **label_cfg)
+        pv.create_text(ox + dw // 2, oy + dh + pad_px,
+                       anchor=tk.N, text=f"{rb:.2f}", **label_cfg)
+
+    def _preview_corners(self) -> None:
+        pv = self._preview
+        stitched = slicer.stitch_corners(self._img, self._margins)
+        sw, sh = stitched.size
+        self._res_var.set(f"Result: {sw} x {sh} px")
+        result = self._fit_to_preview(stitched)
+        if result is None:
+            return
+        tki, cx, cy, dw, dh, scale = result
+        self._pv_img = tki
+        pv.create_image(cx, cy, anchor=tk.CENTER, image=tki)
         if self._show_guides.get():
             m = self._margins
-            iw, ih = self._img.width, self._img.height
-            cx = int(m.left * scale)
-            cy = int(m.top * scale)
-            ox = x - display_w // 2
-            oy = y - display_h // 2
-            pv.create_line(ox + cx, oy, ox + cx, oy + display_h,
+            gx = int(m.left * scale)
+            gy = int(m.top * scale)
+            ox = cx - dw // 2
+            oy = cy - dh // 2
+            pv.create_line(ox + gx, oy, ox + gx, oy + dh,
                            fill="#ffffff", width=1, dash=(4, 4))
-            pv.create_line(ox, oy + cy, ox + display_w, oy + cy,
+            pv.create_line(ox, oy + gy, ox + dw, oy + gy,
                            fill="#ffffff", width=1, dash=(4, 4))
+            self._draw_margin_labels(ox, oy, dw, dh)
 
-            # Margin ratios (fraction of source image dimension)
-            rl = m.left / iw if iw else 0
-            rr = m.right / iw if iw else 0
-            rt = m.top / ih if ih else 0
-            rb = m.bottom / ih if ih else 0
-            label_cfg = dict(fill="#cccccc", font=("TkDefaultFont", 9))
-            pad_px = 4
+    def _preview_9slice(self) -> None:
+        pv = self._preview
+        slices = slicer.slice_image(self._img, self._margins)
+        pw = pv.winfo_width() or 300
+        ph = pv.winfo_height() or 300
 
-            # Left — outside left edge, vertically centred
-            pv.create_text(ox - pad_px, oy + display_h // 2,
-                           anchor=tk.E, text=f"{rl:.2f}", **label_cfg)
-            # Right — outside right edge, vertically centred
-            pv.create_text(ox + display_w + pad_px, oy + display_h // 2,
-                           anchor=tk.W, text=f"{rr:.2f}", **label_cfg)
-            # Top — outside top edge, horizontally centred
-            pv.create_text(ox + display_w // 2, oy - pad_px,
-                           anchor=tk.S, text=f"{rt:.2f}", **label_cfg)
-            # Bottom — outside bottom edge, horizontally centred
-            pv.create_text(ox + display_w // 2, oy + display_h + pad_px,
-                           anchor=tk.N, text=f"{rb:.2f}", **label_cfg)
+        col_widths = [slices["corner_tl"].width, slices["edge_top"].width, slices["corner_tr"].width]
+        row_heights = [slices["corner_tl"].height, slices["edge_left"].height, slices["corner_bl"].height]
+        self._res_var.set(f"Source: {self._img.width} x {self._img.height} px")
+
+        gap = PREVIEW_GAP
+        total_w = sum(col_widths) or 1
+        total_h = sum(row_heights) or 1
+        avail_w = pw - gap * 4
+        avail_h = ph - gap * 4
+        scale = min(avail_w / total_w, avail_h / total_h, 4.0)
+        if scale <= 0:
+            scale = 1
+
+        grid_w = sum(max(1, int(cw * scale)) for cw in col_widths) + gap * 2
+        grid_h = sum(max(1, int(rh * scale)) for rh in row_heights) + gap * 2
+        start_x = (pw - grid_w) // 2
+        start_y = (ph - grid_h) // 2
+
+        y = start_y
+        idx = 0
+        for row in range(3):
+            x = start_x
+            rh = max(1, int(row_heights[row] * scale))
+            for col in range(3):
+                name = slicer.SLICE_NAMES[idx]
+                cw_px = max(1, int(col_widths[col] * scale))
+                sub = slices[name]
+                if sub.width > 0 and sub.height > 0:
+                    resized = sub.resize((cw_px, rh), Image.LANCZOS)
+                    tki = ImageTk.PhotoImage(resized)
+                    self._pv_imgs.append(tki)
+                    pv.create_image(x, y, anchor=tk.NW, image=tki)
+                    pv.create_rectangle(x, y, x + cw_px, y + rh, outline="#555", width=1)
+                x += cw_px + gap
+                idx += 1
+            y += rh + gap
+
+    def _preview_json(self) -> None:
+        import json as json_mod
+        import re
+
+        m = self._margins
+        iw, ih = self._img.width, self._img.height
+        regions = slicer.compute_regions(iw, ih, m)
+        self._res_var.set("")
+
+        data = {
+            "image_size": {"width": iw, "height": ih},
+            "margins": {"left": m.left, "right": m.right, "top": m.top, "bottom": m.bottom},
+            "slices": {name: {"x": b[0], "y": b[1], "w": b[2] - b[0], "h": b[3] - b[1]}
+                       for name, b in regions.items()},
+        }
+        text = json_mod.dumps(data, indent=2)
+
+        tw = self._json_text
+        tw.config(state=tk.NORMAL)
+        tw.delete("1.0", tk.END)
+        tw.insert("1.0", text)
+
+        # Apply syntax highlighting
+        for tag in ("key", "string", "number", "brace", "colon", "comma"):
+            tw.tag_remove(tag, "1.0", tk.END)
+
+        for match in re.finditer(r'"[^"]*"\s*:', text):
+            # key (including the colon)
+            start = f"1.0+{match.start()}c"
+            colon_pos = match.end() - 1
+            end_key = f"1.0+{colon_pos}c"
+            end_colon = f"1.0+{match.end()}c"
+            tw.tag_add("key", start, end_key)
+            tw.tag_add("colon", end_key, end_colon)
+
+        for match in re.finditer(r':\s*"([^"]*)"', text):
+            # string values (just the quoted part)
+            val_start = text.index('"', match.start() + 1)
+            val_end = match.end()
+            tw.tag_add("string", f"1.0+{val_start}c", f"1.0+{val_end}c")
+
+        for match in re.finditer(r'(?<=[\s:,\[])(-?\d+\.?\d*)', text):
+            tw.tag_add("number", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
+
+        for match in re.finditer(r'[{}\[\]]', text):
+            tw.tag_add("brace", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
+
+        for match in re.finditer(r',', text):
+            tw.tag_add("comma", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
+
+        tw.config(state=tk.DISABLED)
+
+    _EXPORT_LABELS = {
+        "Stitched Corners": "Export Stitched Corners",
+        "9-Slice": "Export 9 PNGs",
+        "JSON": "Export JSON",
+    }
+
+    def _on_mode_change(self) -> None:
+        mode = self._preview_mode.get()
+        self._export_btn.config(text=self._EXPORT_LABELS.get(mode, "Export"))
+        # Swap between canvas and JSON text widget
+        if mode == "JSON":
+            self._preview.pack_forget()
+            self._json_frame.pack(fill=tk.BOTH, expand=True)
+        else:
+            self._json_frame.pack_forget()
+            self._preview.pack(fill=tk.BOTH, expand=True)
+        self._redraw_preview()
+
+    def _export_current(self) -> None:
+        mode = self._preview_mode.get()
+        if mode == "Stitched Corners":
+            self._export_corners()
+        elif mode == "9-Slice":
+            self._export_pngs()
+        elif mode == "JSON":
+            self._export_json()
 
     # ------------------------------------------------------------------
     # Guide interaction
@@ -535,13 +710,4 @@ class App(tk.Tk):
         paths = slicer.export_slices(self._img, self._margins, directory)
         self._status_var.set(f"Saved {len(paths)} PNGs → {directory}")
 
-    def _export_atlas(self) -> None:
-        if not self._ensure_image():
-            return
-        path = filedialog.asksaveasfilename(
-            defaultextension=".png", filetypes=[("PNG", "*.png")]
-        )
-        if not path:
-            return
-        slicer.export_atlas(self._img, self._margins, path)
-        self._status_var.set(f"Saved atlas → {os.path.basename(path)}")
+

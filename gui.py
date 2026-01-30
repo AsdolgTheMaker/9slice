@@ -74,10 +74,17 @@ class App(tk.Tk):
         right_frame = ttk.Frame(top)
         top.add(right_frame, weight=2)
 
+        top_bar = ttk.Frame(right_frame)
+        top_bar.pack(side=tk.TOP, fill=tk.X, pady=(4, 2))
+
         self._res_var = tk.StringVar(value="")
-        self._res_label = ttk.Label(right_frame, textvariable=self._res_var,
-                                    font=("TkDefaultFont", 10, "bold"))
-        self._res_label.pack(side=tk.TOP, pady=(4, 2))
+        ttk.Label(top_bar, textvariable=self._res_var,
+                  font=("TkDefaultFont", 10, "bold")).pack(side=tk.LEFT, padx=4)
+
+        self._show_guides = tk.BooleanVar(value=True)
+        ttk.Checkbutton(top_bar, text="Show guides",
+                        variable=self._show_guides,
+                        command=self._redraw_preview).pack(side=tk.RIGHT, padx=4)
 
         self._preview = tk.Canvas(right_frame, bg=PREVIEW_BG, highlightthickness=0)
         self._preview.pack(fill=tk.BOTH, expand=True)
@@ -250,16 +257,39 @@ class App(tk.Tk):
         x = pw // 2
         y = ph // 2
         pv.create_image(x, y, anchor=tk.CENTER, image=self._pv_img)
-        # Draw a divider cross to show the 4 corners
-        m = self._margins
-        cx = int(m.left * scale)
-        cy = int(m.top * scale)
-        ox = x - display_w // 2
-        oy = y - display_h // 2
-        pv.create_line(ox + cx, oy, ox + cx, oy + display_h,
-                       fill="#ffffff", width=1, dash=(4, 4))
-        pv.create_line(ox, oy + cy, ox + display_w, oy + cy,
-                       fill="#ffffff", width=1, dash=(4, 4))
+        # Draw a divider cross and margin percentages
+        if self._show_guides.get():
+            m = self._margins
+            iw, ih = self._img.width, self._img.height
+            cx = int(m.left * scale)
+            cy = int(m.top * scale)
+            ox = x - display_w // 2
+            oy = y - display_h // 2
+            pv.create_line(ox + cx, oy, ox + cx, oy + display_h,
+                           fill="#ffffff", width=1, dash=(4, 4))
+            pv.create_line(ox, oy + cy, ox + display_w, oy + cy,
+                           fill="#ffffff", width=1, dash=(4, 4))
+
+            # Margin ratios (fraction of source image dimension)
+            rl = m.left / iw if iw else 0
+            rr = m.right / iw if iw else 0
+            rt = m.top / ih if ih else 0
+            rb = m.bottom / ih if ih else 0
+            label_cfg = dict(fill="#cccccc", font=("TkDefaultFont", 9))
+            pad_px = 4
+
+            # Left — outside left edge, vertically centred
+            pv.create_text(ox - pad_px, oy + display_h // 2,
+                           anchor=tk.E, text=f"{rl:.2f}", **label_cfg)
+            # Right — outside right edge, vertically centred
+            pv.create_text(ox + display_w + pad_px, oy + display_h // 2,
+                           anchor=tk.W, text=f"{rr:.2f}", **label_cfg)
+            # Top — outside top edge, horizontally centred
+            pv.create_text(ox + display_w // 2, oy - pad_px,
+                           anchor=tk.S, text=f"{rt:.2f}", **label_cfg)
+            # Bottom — outside bottom edge, horizontally centred
+            pv.create_text(ox + display_w // 2, oy + display_h + pad_px,
+                           anchor=tk.N, text=f"{rb:.2f}", **label_cfg)
 
     # ------------------------------------------------------------------
     # Guide interaction

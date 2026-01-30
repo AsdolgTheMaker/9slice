@@ -7,9 +7,8 @@ Desktop tool for defining 9-slice boundaries on an image. Load a texture, drag t
 You have a texture with decorative corners and stretchable edges (a UI panel, a button skin, a dialog frame). This tool lets you visually set the four slice margins and then export:
 
 - **Stitched corners image** — the four corners joined into a single PNG, with live preview and output resolution displayed as you edit
-- **JSON coordinates** — margin values and per-slice regions for game engines
 - **9 individual PNGs** — each slice as a separate file
-- **Texture atlas** — all 9 slices in a single image with transparent padding
+- **JSON coordinates** — margin values and per-slice regions for game engines
 
 ## Requirements
 
@@ -30,13 +29,4 @@ Or double-click `9slice.bat` on Windows.
 - **Mouse wheel** to zoom
 - **Right-click drag** to pan
 - **Ctrl+Z / Ctrl+Y** for undo/redo
-- Margin values are also editable as numbers in the bottom bar
-
-## Project structure
-
-| File | Purpose |
-|---|---|
-| `slicer.py` | Core logic — no GUI, independently testable |
-| `gui.py` | Tkinter interface |
-| `main.py` | Entry point |
-| `test_slicer.py` | Unit tests (`python -m pytest test_slicer.py`) |
+- Margin values are also editable as numbers in the toolbar

@@ -154,8 +154,11 @@ class App(tk.Tk):
             messagebox.showerror("Error", f"Failed to load image:\n{e}")
             return
 
-        # Reset state
-        self._margins = slicer.Margins(0, 0, 0, 0)
+        # Reset state — default margins at 25%
+        self._margins = slicer.Margins(
+            round(self._img.width * 0.25), round(self._img.width * 0.25),
+            round(self._img.height * 0.25), round(self._img.height * 0.25),
+        )
         self._undo_stack.clear()
         self._redo_stack.clear()
         self._zoom = 1.0

@@ -130,6 +130,7 @@ class App(tk.Tk):
         self._canvas.bind("<B2-Motion>", self._on_pan_move)
         self._canvas.bind("<ButtonPress-3>", self._on_pan_start)
         self._canvas.bind("<B3-Motion>", self._on_pan_move)
+        self._canvas.bind("<Motion>", self._on_hover)
 
         self._preview.bind("<Configure>", lambda _: self._redraw_preview())
         self._preview.bind("<ButtonPress-1>", self._on_preview_click)
@@ -217,19 +218,41 @@ class App(tk.Tk):
         ox, oy = self._pan_offset
         c.create_image(ox, oy, anchor=tk.NW, image=self._tk_img)
 
-        # Guide lines
+        # Guide lines + grip handles
         m = self._margins
         w, h = self._img.width, self._img.height
+        box_size = 24     # square box side length
+        grip_pad = 5      # padding inside box before grip lines
+        grip_gap = 6      # vertical spacing between the 3 lines
+        box_color = "#444444"
+        line_color = "#999999"
+
+        def _draw_grip(cx: float, cy: float) -> None:
+            """Draw a square grip handle centred at (cx, cy) with 3 horizontal lines."""
+            half = box_size / 2
+            c.create_rectangle(cx - half, cy - half, cx + half, cy + half,
+                               fill=box_color, outline=box_color, tags="guide")
+            stroke_half = half - grip_pad
+            for offset in (-grip_gap, 0, grip_gap):
+                ly = cy + offset
+                c.create_line(cx - stroke_half, ly, cx + stroke_half, ly,
+                              fill=line_color, width=1, tags="guide")
+
         # Vertical guides (left, right)
         for ix in (m.left, w - m.right):
             x0, y0 = self._img_to_canvas(ix, 0)
             x1, y1 = self._img_to_canvas(ix, h)
             c.create_line(x0, y0, x1, y1, fill=GUIDE_COLOR, width=GUIDE_WIDTH, tags="guide")
+            _draw_grip(x0, y0 - box_size / 2 - 1)
+            _draw_grip(x0, y1 + box_size / 2 + 1)
+
         # Horizontal guides (top, bottom)
         for iy in (m.top, h - m.bottom):
             x0, y0 = self._img_to_canvas(0, iy)
             x1, y1 = self._img_to_canvas(w, iy)
             c.create_line(x0, y0, x1, y1, fill=GUIDE_COLOR, width=GUIDE_WIDTH, tags="guide")
+            _draw_grip(x0 - box_size / 2 - 1, y0)
+            _draw_grip(x1 + box_size / 2 + 1, y0)
 
     def _redraw_preview(self) -> None:
         pv = self._preview
@@ -324,6 +347,12 @@ class App(tk.Tk):
             if abs(cy - gy) < tol:
                 return name
         return None
+
+    def _on_hover(self, event: tk.Event) -> None:
+        if self._drag_guide is not None:
+            return  # already dragging, cursor set by _on_press
+        guide = self._hit_guide(event.x, event.y)
+        self._canvas.config(cursor="fleur" if guide else "")
 
     def _on_preview_click(self, event: tk.Event) -> None:
         if self._img is None:

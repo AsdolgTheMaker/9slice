@@ -132,6 +132,7 @@ class App(tk.Tk):
         self._canvas.bind("<B3-Motion>", self._on_pan_move)
 
         self._preview.bind("<Configure>", lambda _: self._redraw_preview())
+        self._preview.bind("<ButtonPress-1>", self._on_preview_click)
 
     def _bind_keys(self) -> None:
         self.bind("<Control-z>", lambda _: self._undo())
@@ -321,7 +322,14 @@ class App(tk.Tk):
                 return name
         return None
 
+    def _on_preview_click(self, event: tk.Event) -> None:
+        if self._img is None:
+            self._load_image()
+
     def _on_press(self, event: tk.Event) -> None:
+        if self._img is None:
+            self._load_image()
+            return
         guide = self._hit_guide(event.x, event.y)
         if guide:
             self._push_undo()

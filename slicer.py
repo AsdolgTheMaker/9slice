@@ -142,37 +142,3 @@ def export_corners(img: Image.Image, margins: Margins, path: str) -> None:
     result.save(path)
 
 
-def export_atlas(img: Image.Image, margins: Margins, path: str, padding: int = 1) -> None:
-    """Export a single texture-atlas image with *padding* px transparent gaps
-    between each slice.
-
-    Layout is the same 3×3 grid, but each cell is separated by *padding*
-    transparent pixels.
-    """
-    slices = slice_image(img, margins)
-    # Determine column widths and row heights from actual slice sizes.
-    col_widths = [
-        slices["corner_tl"].width,
-        slices["edge_top"].width,
-        slices["corner_tr"].width,
-    ]
-    row_heights = [
-        slices["corner_tl"].height,
-        slices["edge_left"].height,
-        slices["corner_bl"].height,
-    ]
-    atlas_w = sum(col_widths) + padding * 2
-    atlas_h = sum(row_heights) + padding * 2
-    atlas = Image.new("RGBA", (atlas_w, atlas_h), (0, 0, 0, 0))
-
-    y = 0
-    idx = 0
-    for row in range(3):
-        x = 0
-        for col in range(3):
-            name = SLICE_NAMES[idx]
-            atlas.paste(slices[name], (x, y))
-            x += col_widths[col] + padding
-            idx += 1
-        y += row_heights[row] + padding
-    atlas.save(path)

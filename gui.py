@@ -166,6 +166,8 @@ class App(tk.Tk):
         self._canvas.bind("<B2-Motion>", self._on_pan_move)
         self._canvas.bind("<ButtonPress-3>", self._on_pan_start)
         self._canvas.bind("<B3-Motion>", self._on_pan_move)
+        self._canvas.bind("<ButtonRelease-2>", self._on_pan_end)
+        self._canvas.bind("<ButtonRelease-3>", self._on_pan_end)
         self._canvas.bind("<Motion>", self._on_hover)
 
         self._preview.bind("<Configure>", lambda _: self._redraw_preview())
@@ -415,7 +417,6 @@ class App(tk.Tk):
             y += rh + gap
 
     def _preview_json(self) -> None:
-        import json as json_mod
         import re
 
         m = self._margins
@@ -429,7 +430,7 @@ class App(tk.Tk):
             "slices": {name: {"x": b[0], "y": b[1], "w": b[2] - b[0], "h": b[3] - b[1]}
                        for name, b in regions.items()},
         }
-        text = json_mod.dumps(data, indent=2)
+        text = json.dumps(data, indent=2)
 
         tw = self._json_text
         tw.config(state=tk.NORMAL)
@@ -600,6 +601,9 @@ class App(tk.Tk):
         self._pan_start = (event.x, event.y)
         self._redraw()
 
+    def _on_pan_end(self, event: tk.Event) -> None:
+        self._pan_start = None
+
     # ------------------------------------------------------------------
     # Undo / Redo
     # ------------------------------------------------------------------
@@ -684,8 +688,8 @@ class App(tk.Tk):
         )
         if not path:
             return
-        slicer.export_corners(self._img, self._margins, path)
         result = slicer.stitch_corners(self._img, self._margins)
+        result.save(path)
         self._status_var.set(
             f"Saved corners ({result.width}x{result.height}) → {os.path.basename(path)}"
         )

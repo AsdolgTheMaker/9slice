@@ -9,7 +9,7 @@ from PIL import Image
 
 import slicer
 from slicer import (Margins, compute_regions, slice_image, export_json,
-                    export_slices, export_atlas, stitch_corners, export_corners)
+                    export_slices, stitch_corners, export_corners)
 
 
 # ---------------------------------------------------------------------------
@@ -134,30 +134,6 @@ class TestExportSlices:
                 assert os.path.isfile(p)
                 assert p.endswith(".png")
 
-
-# ---------------------------------------------------------------------------
-# Export atlas
-# ---------------------------------------------------------------------------
-class TestExportAtlas:
-    def test_creates_file(self):
-        img = _make_img()
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "atlas.png")
-            export_atlas(img, Margins(10, 10, 10, 10), path, padding=1)
-            atlas = Image.open(path)
-            # Atlas should be slightly bigger than original due to padding
-            assert atlas.width == img.width + 2   # 2 gaps × 1px
-            assert atlas.height == img.height + 2
-            atlas.close()
-
-    def test_padding_zero(self):
-        img = _make_img()
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "atlas.png")
-            export_atlas(img, Margins(10, 10, 10, 10), path, padding=0)
-            atlas = Image.open(path)
-            assert atlas.size == img.size
-            atlas.close()
 
 
 # ---------------------------------------------------------------------------
